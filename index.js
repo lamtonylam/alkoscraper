@@ -10,7 +10,12 @@ app.get("/", async (req, res) => {
         const browser = await chromium.launch();
         const page = await browser.newPage();
 
-        await page.goto("https://www.alko.fi/tuotteet/000706/");
+        // if example.com/?id=123
+        if (req.query.id) {
+            await page.goto(`https://www.alko.fi/tuotteet/${req.query.id}/`);
+        } else {
+            await page.goto("https://www.alko.fi/tuotteet/000706/");
+        }
 
         const content = await page.content();
         const spanElement = await page.$(
