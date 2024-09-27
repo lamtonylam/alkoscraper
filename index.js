@@ -34,8 +34,6 @@ app.get("/", async (req, res) => {
         );
         const spanContent = await spanElement.getAttribute("content");
 
-        fs.writeFileSync("alkopage.txt", content);
-
         await browser.close();
 
         res.json({ price: spanContent });
