@@ -1,5 +1,6 @@
 const express = require("express");
-const { chromium } = require("playwright");
+const { chromium } = require("playwright-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const fs = require("fs");
 
 const app = express();
@@ -7,7 +8,17 @@ const port = 3000;
 
 app.get("/", async (req, res) => {
     try {
-        const browser = await chromium.launch();
+        chromium.use(StealthPlugin());
+        // New way to overwrite the default options of stealth evasion plugins
+        // https://github.com/berstend/puppeteer-extra/tree/master/packages/puppeteer-extra-plugin-stealth/evasions
+        chromium.plugins.setDependencyDefaults(
+            "stealth/evasions/webgl.vendor",
+            {
+                vendor: "Bob",
+                renderer: "Alice",
+            }
+        );
+        const browser = await chromium.launch({ headless: true });
         const page = await browser.newPage();
 
         // if example.com/?id=123
