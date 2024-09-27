@@ -1,7 +1,6 @@
-const express = require("express");
-const { chromium } = require("playwright-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-const fs = require("fs");
+import express from "express";
+import { chromium } from "playwright-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
 const app = express();
 const port = 3000;
