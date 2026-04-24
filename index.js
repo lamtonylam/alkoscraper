@@ -15,7 +15,7 @@ app.get("/", async (req, res) => {
             {
                 vendor: "Bob",
                 renderer: "Alice",
-            }
+            },
         );
         const browser = await chromium.launch({ headless: true });
         const page = await browser.newPage();
@@ -28,14 +28,24 @@ app.get("/", async (req, res) => {
         }
 
         const content = await page.content();
-        const spanElement = await page.$(
-            'span.js-price-container.price-wrapper.price.module-price[itemprop="price"]'
+
+        // Extract euro amount
+        const euroElement = await page.$(
+            'span[class*="text-[2.5rem]"][class*="font-semibold"]',
         );
-        const spanContent = await spanElement.getAttribute("content");
+        const euroAmount = await euroElement.textContent();
+
+        // Extract cent amount
+        const centElement = await page.$(
+            'span[class*="text-[1.5rem]"][class*="underline"]',
+        );
+        const centAmount = await centElement.textContent();
+
+        const combinedPrice = `${euroAmount}.${centAmount}`;
 
         await browser.close();
 
-        res.json({ price: spanContent });
+        res.json({ price: combinedPrice });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
