@@ -18,12 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Chromium pinned to package.json version. Do NOT pin a different
-# playwright version here — mismatched browser build = missing
+# Chromium version synced from package-lock.json. Do NOT hardcode a
+# different playwright version — mismatched browser build = missing
 # executable at runtime (e.g. chromium_headless_shell-1217).
-# `npx playwright` resolves to the local install, so browsers always
-# match the runtime version.
-RUN npx playwright install --with-deps chromium \
+# NOTE: bare `npx playwright` fails in this build (exit 127,
+# `playwright: not found`), so fetch the explicit version like before.
+RUN PW_VERSION=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version") \
+    && echo "Installing Playwright browsers for v$PW_VERSION" \
+    && npx -y "playwright@$PW_VERSION" install --with-deps chromium \
     && chown -R node:node /ms-playwright \
     && rm -rf /root/.cache /tmp/*
 
