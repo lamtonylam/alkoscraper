@@ -5,29 +5,59 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 const app = express();
 const port = 3000;
 
+// Stealth setup once. Per-request setup leaked memory.
+chromium.use(StealthPlugin());
+chromium.plugins.setDependencyDefaults("stealth/evasions/webgl.vendor", {
+    vendor: "Bob",
+    renderer: "Alice",
+});
+
+// Single browser reused across requests. Launch-per-request spiked CPU/RAM.
+let browserPromise = null;
+function getBrowser() {
+    if (!browserPromise) {
+        browserPromise = chromium.launch({
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage", // /dev/shm tiny in Docker, crash without this
+                "--disable-gpu",
+                "--disable-extensions",
+                "--no-first-run",
+                "--no-zygote",
+            ],
+        });
+        browserPromise.catch(() => { browserPromise = null; });
+    }
+    return browserPromise;
+}
+
+app.get("/health", (req, res) => res.sendStatus(200));
+
 app.get("/", async (req, res) => {
+    let context = null;
     try {
-        chromium.use(StealthPlugin());
-        // New way to overwrite the default options of stealth evasion plugins
-        // https://github.com/berstend/puppeteer-extra/tree/master/packages/puppeteer-extra-plugin-stealth/evasions
-        chromium.plugins.setDependencyDefaults(
-            "stealth/evasions/webgl.vendor",
-            {
-                vendor: "Bob",
-                renderer: "Alice",
-            },
-        );
-        const browser = await chromium.launch({ headless: true });
-        const page = await browser.newPage();
+        const browser = await getBrowser();
+        context = await browser.newContext({
+            userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        });
+        const page = await context.newPage();
 
-        // if example.com/?id=123
-        if (req.query.id) {
-            await page.goto(`https://www.alko.fi/tuotteet/${req.query.id}/`);
-        } else {
-            await page.goto("https://www.alko.fi/tuotteet/000706/");
-        }
+        // Block images/fonts/media. Cuts bandwidth + RAM on scrape.
+        await page.route("**/*", (route) => {
+            const type = route.request().resourceType();
+            if (["image", "media", "font", "stylesheet"].includes(type)) {
+                return route.abort();
+            }
+            return route.continue();
+        });
 
-        const content = await page.content();
+        const id = req.query.id || "000706";
+        await page.goto(`https://www.alko.fi/tuotteet/${id}/`, {
+            waitUntil: "domcontentloaded",
+            timeout: 15000,
+        });
 
         // Extract euro amount
         const euroElement = await page.$(
@@ -43,13 +73,25 @@ app.get("/", async (req, res) => {
 
         const combinedPrice = `${euroAmount}.${centAmount}`;
 
-        await browser.close();
-
         res.json({ price: combinedPrice });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    } finally {
+        // Close context/page only. Browser stays warm for next request.
+        if (context) await context.close().catch(() => {});
     }
 });
+
+// Graceful shutdown. Flushes browser on deploy/restart.
+async function shutdown() {
+    try {
+        if (browserPromise) (await browserPromise)?.close().catch(() => {});
+    } finally {
+        process.exit(0);
+    }
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
