@@ -18,8 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Chromium only. Skips Firefox/WebKit (~1GB saved).
-RUN npx -y playwright@1.47.2 install --with-deps chromium \
+# Chromium pinned to package.json version. Do NOT pin a different
+# playwright version here — mismatched browser build = missing
+# executable at runtime (e.g. chromium_headless_shell-1217).
+# `npx playwright` resolves to the local install, so browsers always
+# match the runtime version.
+RUN npx playwright install --with-deps chromium \
+    && chown -R node:node /ms-playwright \
     && rm -rf /root/.cache /tmp/*
 
 COPY index.js ./
